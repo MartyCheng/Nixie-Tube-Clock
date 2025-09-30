@@ -3,11 +3,11 @@
 
 /* Include libraries */
 // For Humidity Sensor AM2320
-#include "Adafruit_AM2320.h"
-#include "Adafruit_Sensor.h"
+#include <Adafruit_AM2320.h>
+#include <Adafruit_Sensor.h>
 
 // For Real Time Clock
-#include <DS3231.h>
+#include "DS3231.h"
 #include <Wire.h>
 
 // For Rotary Encoder
@@ -23,22 +23,24 @@ void set_time();
 void show_humidity();
 uint8_t dec_to_BCD(int number);
 void change_mode();
+void display(int a, int b, int c, int d);
+void initial_time();
 
 
 /* Define Pins */ 
 // 74HC595
-const int latch_pin = D7;
-const int clock_pin = D4;
-const int data_pin = D2;
+const int latch_pin = 7;
+const int clock_pin = 4;
+const int data_pin = 2;
 
 // nixie tube
-const int nixie_brightness_pin = D3;
+const int nixie_brightness_pin = 3;
 
 // LED
-const int led_brightness_pin = D13;
-const int led_red_pin = D9;
-const int led_green_pin = D10;
-const int led_blue_pin = D11;
+const int led_brightness_pin = 13;
+const int led_red_pin = 9;
+const int led_green_pin = 10;
+const int led_blue_pin = 11;
 
 // I2C
 const int SCL_pin = A5;
@@ -77,11 +79,11 @@ RotaryEncoder encoder(rotary_clock_pin, rotary_data_pin, RotaryEncoder::LatchMod
 
 void setup() {
 
-  Serial.begin(9600);
-  while (!Serial) {
-    delay(10);
-    // hang out until serial port open
-  }
+  // Serial.begin(9600);
+  // while (!Serial) {
+  //   delay(10);
+  //   // hang out until serial port open
+  // }
 
 
   Wire.begin();  // Start the I2C interface
@@ -90,7 +92,8 @@ void setup() {
   // Define pin mode
   pinMode(latch_pin, OUTPUT);
   pinMode(clock_pin, OUTPUT);
-  pinMode(dataPin, OUTPUT);
+  pinMode(data_pin, OUTPUT);
+  pinMode(nixie_brightness_pin, OUTPUT);
 
   // Real Time Clock
   // mode = false: 24h
@@ -103,68 +106,80 @@ void setup() {
   // External interrupt for Arduino Uno: D2 and D3
   //                    for Arduino Nano: D2 and D3
   encoder.setPosition(0);
-  attachInterrupt(digitalPinToInterrupt(rotary_switch_pin), change_mode, FALLING);
+  attachInterrupt(digitalPinToInterrupt(rotary_switch_pin), initial_time, FALLING); 
+
+
+
 }
 
 void loop() {
 
   temp = am2320.readTemperature();
   humidity = am2320.readHumidity();
-
+  analogWrite(nixie_brightness_pin, 0);
+  
   show_time();
-  delay(100);
+
 }
 
+void display(int a, int b, int c, int d) {
+
+  // initial sending bytes
+  byte high_byte = 0b00000000;
+  byte low_byte = 0b00000000;
+
+  // check a, b, c and d are "one digit"
+  if ( a>10 || b>10 || c>10 || d>10 ) {
+    high_byte = 0b10011001; // set as "99"
+    low_byte = 0b10011001;  // set as "99"
+  }
+
+  // convert digits to byte
+  high_byte = (d << 4) + c;
+  low_byte = (b << 4) + a;
+
+  // sending data
+  digitalWrite(latch_pin, LOW); // pull down latch_pin before sending data
+
+  shiftOut(data_pin, clock_pin, MSBFIRST, high_byte); // send "High Byte" to further 74HC595
+  shiftOut(data_pin, clock_pin, MSBFIRST, low_byte);  // send "Low Byte" to closer 74HC595
+  
+  digitalWrite(latch_pin, HIGH); // pull up latch_pin after sending data
+  delay(500);
+}
 
 void show_time() {
 
   // read time by RTC functions
   int hour = myRTC.getHour(h12Flag, pmFlag);
   int minute = myRTC.getMinute();
+  int second = myRTC.getSecond();
   
-  // convert time to BCD format
-  uint8_t hour_uint8 = dec_to_BCD(hour);
-  uint8_t minute_uint8 = dec_to_BCD(minute);
+  int a = int(minute / 10);
+  int b = int(minute % 10);
+  int c = int(second / 10);
+  int d = int(second % 10);
 
-  Serial.print("Hour = ");
-  Serial.println(hour);
-  Serial.println(dec_to_BCD(hour), BIN);
-
-  Serial.print("Minute = ");
-  Serial.println(minute);
-  Serial.println(dec_to_BCD(minute), BIN);
-  
-  // send data to display
-  byte high_Byte = highByte(hour_uint8);
-  byte low_Byte = lowByte(minute_uint8);
-  
-  digitalWrite(latchPin, LOW); // let latch to LOW before sending data
-  shiftOut(dataPin, clockPin, MSBFIRST, high_Byte); // send "High Byte" to further 74HC595
-  shiftOut(dataPin, clockPin, MSBFIRST, low_Byte); // send "Low Byte" to closer 74HC595
-  digitalWrite(latchPin, HIGH); // let latch to HIGH after sending data
-
+  display(a, b, c, d);
 
 }
 
 
 uint8_t dec_to_BCD(int number) {
   /*
-    TODO:
-    may need to invert the order of tens and ones
-
     Convert a decimal number to a combination of 2 BCD number
     Example 1:
     number = 59
-    return = 0101 1001
+    return = 1001 0101
 
     Example 2:
     number = 3
-    return = 0000 0011
+    return = 0011 0000
   */
   int tens = int(number / 10);
   int ones = int(number % 10);
 
-  return (tens << 4) + ones;
+  return (ones << 4) + tens;
 }
 
 void set_time() {
@@ -185,7 +200,7 @@ void set_time() {
     Serial.print(new_pos);
     Serial.print(" dir:");
     Serial.println((int)(encoder.getDirection()));
-    new_hour = new_hour + (int)(encoder.getDirection())
+    new_hour = new_hour + (int)(encoder.getDirection());
     pos = new_pos;
   }
 
@@ -196,7 +211,7 @@ void set_time() {
     Serial.print(new_pos);
     Serial.print(" dir:");
     Serial.println((int)(encoder.getDirection()));
-    new_minute = new_minute + (int)(encoder.getDirection())
+    new_minute = new_minute + (int)(encoder.getDirection());
     pos = new_pos;
   }
 
@@ -216,5 +231,13 @@ void change_mode()
   //   poison
   //   show temp
   //   show humidity
+  
+}
+
+void initial_time() {
+  // store to RTC while the button is clicked
+  myRTC.setHour(18);
+  myRTC.setMinute(32);
+  myRTC.setSecond(22);
   
 }
