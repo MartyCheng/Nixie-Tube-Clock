@@ -18,9 +18,8 @@
 
 /* Define functions */
 void show_time();
-void show_temp();
+void show_temp_humidity();
 void set_time();
-void show_humidity();
 uint8_t dec_to_BCD(int number);
 void change_mode();
 void display(int a, int b, int c, int d);
@@ -241,3 +240,18 @@ void initial_time() {
   myRTC.setSecond(22);
   
 }
+
+
+void show_temp_humidity() {
+    temp = am2320.readTemperature();
+    humidity = am2320.readHumidity();
+
+    temp_tens = int(temp / 10);
+    temp_ones = int(temp % 10);
+
+    humidity_tens = int(humidity / 10);
+    humidity_ones = int(humidity % 10);
+
+    display(temp_tens, temp_ones, humidity_tens, humidity_ones);
+}
+
